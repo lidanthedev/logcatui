@@ -41,7 +41,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 private const val DEVICE_TRACK_RETRY_MS = 1_500L
-private const val MAX_LOG_ENTRIES = 12_000
+private const val MAX_LOG_ENTRIES = 50_000
 private val LOGCAT_PATTERN =
     Regex(
         """^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})\s+(\d+)\s+(\d+)\s+([VDIWEAF])\s+(.+?):\s(.*)$"""
