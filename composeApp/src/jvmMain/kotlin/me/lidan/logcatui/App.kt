@@ -1,50 +1,21 @@
 package me.lidan.logcatui
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.VerticalScrollbar
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusManager
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -53,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -131,15 +103,15 @@ private fun LogcatViewer(controller: LogcatController) {
                     query.isEmpty() -> true
                     controller.regexEnabled && regex != null ->
                         regex.containsMatchIn(entry.tag) ||
-                            regex.containsMatchIn(entry.message) ||
-                            regex.containsMatchIn(entry.rawLine)
+                                regex.containsMatchIn(entry.message) ||
+                                regex.containsMatchIn(entry.rawLine)
 
                     controller.regexEnabled -> true
                     else -> {
                         val needle = query.lowercase()
                         entry.tag.lowercase().contains(needle) ||
-                            entry.message.lowercase().contains(needle) ||
-                            entry.rawLine.lowercase().contains(needle)
+                                entry.message.lowercase().contains(needle) ||
+                                entry.rawLine.lowercase().contains(needle)
                     }
                 }
             }
@@ -304,11 +276,29 @@ private fun SearchField(
     placeholder: String,
     modifier: Modifier = Modifier,
 ) {
+    AppTextField(
+        value,
+        onValueChange,
+        modifier,
+        placeholder,
+        icon = { AppIcon(AppIconSymbol.Search, modifier = Modifier.size(14.dp)) })
+}
+
+@Composable
+fun AppTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier,
+    placeholder: String,
+    readOnly: Boolean = false,
+    icon: @Composable RowScope.() -> Unit = {}
+) {
     var focused by remember { mutableStateOf(false) }
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
+        readOnly = readOnly,
         textStyle =
             TextStyle(
                 color = Color(0xFFE7EAF0),
@@ -333,7 +323,7 @@ private fun SearchField(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                AppIcon(AppIconSymbol.Search, modifier = Modifier.size(14.dp))
+                icon()
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) {
                         Text(placeholder, color = SoftText, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -686,7 +676,12 @@ private fun LogRow(
         verticalAlignment = Alignment.Top,
     ) {
         MonoText(entry.timestamp, modifier = Modifier.width(150.dp), color = SoftText)
-        MonoText(entry.level.token.toString(), modifier = Modifier.width(50.dp), color = levelColor, fontWeight = FontWeight.Bold)
+        MonoText(
+            entry.level.token.toString(),
+            modifier = Modifier.width(50.dp),
+            color = levelColor,
+            fontWeight = FontWeight.Bold
+        )
         MonoText(entry.tag, modifier = Modifier.width(200.dp), color = levelColor)
         MonoText(entry.message, modifier = Modifier.weight(1f), color = Color(0xFFE7EAF0))
     }
@@ -745,10 +740,12 @@ private fun DetailPanel(
                     .border(1.dp, AppBorder)
                     .padding(12.dp),
         ) {
-            Text(
-                text = entry.rawLine,
-                fontFamily = FontFamily.Monospace,
-                color = Color(0xFFE7EAF0),
+            AppTextField(
+                value = entry.rawLine,
+                onValueChange = {},
+                placeholder = "Log Line",
+                readOnly = true,
+                modifier = Modifier,
             )
         }
     }
@@ -943,8 +940,8 @@ private fun filterDevices(
 
     return devices.filter { device ->
         device.serial.lowercase().contains(needle) ||
-            device.model.lowercase().contains(needle) ||
-            device.state.lowercase().contains(needle)
+                device.model.lowercase().contains(needle) ||
+                device.state.lowercase().contains(needle)
     }
 }
 
@@ -959,7 +956,7 @@ private fun filterProcesses(
 
     return processes.filter { process ->
         process.name.lowercase().contains(needle) ||
-            process.pid.toString().contains(needle)
+                process.pid.toString().contains(needle)
     }
 }
 
