@@ -351,7 +351,7 @@ private fun LevelDropdown(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(150.dp).background(PanelBackground),
+            modifier = Modifier.width(150.dp).background(PanelAltBackground),
         ) {
             LogLevel.dropdownValues.forEach { level ->
                 DropdownMenuItem(
@@ -385,7 +385,7 @@ private fun DeviceDropdown(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(320.dp).background(PanelBackground),
+            modifier = Modifier.width(320.dp).background(PanelAltBackground),
         ) {
             devices.forEach { device ->
                 DropdownMenuItem(

@@ -496,7 +496,7 @@ class LogcatController(
         logStreamingJob =
             scope.launch {
                 isStreaming = true
-                statusMessage = "Streaming logcat from $serial..."
+                statusMessage = "Ready."
                 try {
                     service.streamLogs(serial, selectedLevel, trackedPid).collect(::appendLog)
                 } catch (error: CancellationException) {
