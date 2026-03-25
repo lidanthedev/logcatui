@@ -40,8 +40,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -104,6 +107,7 @@ fun App() {
 @Composable
 private fun LogcatViewer(controller: LogcatController) {
     val lazyListState = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
     var deviceSearchQuery by remember { mutableStateOf("") }
     var processSearchQuery by remember { mutableStateOf("") }
 
@@ -163,11 +167,22 @@ private fun LogcatViewer(controller: LogcatController) {
             lazyListState.scrollToItem(filteredLogs.lastIndex)
         }
     }
+    LaunchedEffect(lazyListState) {
+        var wasScrolling = false
+        snapshotFlow { lazyListState.isScrollInProgress to lazyListState.isAtBottom() }
+            .collect { (scrolling, atBottom) ->
+                if (scrolling || wasScrolling) {
+                    controller.autoScrollToBottom = atBottom
+                }
+                wasScrolling = scrolling
+            }
+    }
 
     Box(
         modifier =
             Modifier.fillMaxSize()
                 .background(AppBackground)
+                .clearSelectionOnBackgroundTap(focusManager) { controller.selectLog(null) }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Toolbar(
@@ -194,7 +209,7 @@ private fun LogcatViewer(controller: LogcatController) {
                 ) {
                     ProcessList(
                         processes = filteredProcesses,
-                        selectedPid = controller.selectedProcessPid,
+                        selectedProcessName = controller.selectedProcessName,
                         searchQuery = processSearchQuery,
                         onSearchChange = { processSearchQuery = it },
                         onSelect = controller::selectProcess,
@@ -487,10 +502,10 @@ private fun DeviceList(
 @Composable
 private fun ProcessList(
     processes: List<ProcessDescriptor>,
-    selectedPid: Int?,
+    selectedProcessName: String?,
     searchQuery: String,
     onSearchChange: (String) -> Unit,
-    onSelect: (Int?) -> Unit,
+    onSelect: (ProcessDescriptor?) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         SearchField(
@@ -504,7 +519,7 @@ private fun ProcessList(
                 SidebarRow(
                     title = "All processes",
                     subtitle = "Show logs from every process",
-                    selected = selectedPid == null,
+                    selected = selectedProcessName == null,
                     onClick = { onSelect(null) },
                 )
             }
@@ -512,8 +527,8 @@ private fun ProcessList(
                 SidebarRow(
                     title = process.name,
                     subtitle = "PID ${process.pid}",
-                    selected = process.pid == selectedPid,
-                    onClick = { onSelect(process.pid) },
+                    selected = process.name == selectedProcessName,
+                    onClick = { onSelect(process) },
                 )
             }
         }
@@ -955,4 +970,22 @@ private fun levelColor(level: LogLevel): Color =
         LogLevel.Info -> Success
         LogLevel.Warn -> Warning
         LogLevel.Error, LogLevel.Assert -> ErrorRed
+    }
+
+private fun LazyListState.isAtBottom(): Boolean {
+    val layoutInfo = layoutInfo
+    val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull() ?: return true
+    return lastVisibleItem.index >= layoutInfo.totalItemsCount - 1
+}
+
+private fun Modifier.clearSelectionOnBackgroundTap(
+    focusManager: FocusManager,
+    onClearSelection: () -> Unit,
+): Modifier =
+    clickable(
+        interactionSource = MutableInteractionSource(),
+        indication = null,
+    ) {
+        focusManager.clearFocus(force = true)
+        onClearSelection()
     }

@@ -42,6 +42,7 @@ import kotlinx.coroutines.withContext
 
 private const val DEVICE_TRACK_RETRY_MS = 1_500L
 private const val MAX_LOG_ENTRIES = 50_000
+private const val PROCESS_MONITOR_INTERVAL_MS = 1_500L
 private val LOGCAT_PATTERN =
     Regex(
         """^(\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})\s+(\d+)\s+(\d+)\s+([VDIWEAF])\s+(.+?):\s(.*)$"""
@@ -94,6 +95,8 @@ data class LogEntry(
     val source: String = "stdout",
     val receivedAt: Instant = Instant.now(),
 )
+
+private val syntheticLogId = AtomicLong(1_000_000_000L)
 
 class AdbLogcatService : AutoCloseable {
     private val sessionMutex = Mutex()
@@ -325,6 +328,7 @@ class LogcatController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var deviceTrackingJob: Job? = null
     private var processRefreshJob: Job? = null
+    private var processMonitorJob: Job? = null
     private var logStreamingJob: Job? = null
 
     var devices by mutableStateOf<List<DeviceDescriptor>>(emptyList())
@@ -332,6 +336,8 @@ class LogcatController(
     var processes by mutableStateOf<List<ProcessDescriptor>>(emptyList())
         private set
     var selectedDeviceSerial by mutableStateOf<String?>(null)
+        private set
+    var selectedProcessName by mutableStateOf<String?>(null)
         private set
     var selectedProcessPid by mutableStateOf<Int?>(null)
         private set
@@ -358,24 +364,29 @@ class LogcatController(
             return
         }
         selectedDeviceSerial = serial
+        selectedProcessName = null
         selectedProcessPid = null
         processes = emptyList()
         clearLogs()
         if (serial == null) {
             stopStreaming()
+            stopProcessMonitoring()
             statusMessage = "No device selected."
             return
         }
         refreshProcesses()
+        startProcessMonitoring()
         restartStreaming()
     }
 
-    fun selectProcess(pid: Int?) {
-        if (selectedProcessPid == pid) {
+    fun selectProcess(process: ProcessDescriptor?) {
+        if (selectedProcessName == process?.name && selectedProcessPid == process?.pid) {
             return
         }
-        selectedProcessPid = pid
+        selectedProcessName = process?.name
+        selectedProcessPid = process?.pid
         clearLogs()
+        startProcessMonitoring()
         restartStreaming()
     }
 
@@ -434,6 +445,7 @@ class LogcatController(
         stopStreaming()
         deviceTrackingJob?.cancel()
         processRefreshJob?.cancel()
+        processMonitorJob?.cancel()
         scope.cancel()
         service.close()
     }
@@ -448,6 +460,7 @@ class LogcatController(
                     val currentExists = deviceList.any { it.serial == currentSerial }
                     if (!currentExists) {
                         selectedDeviceSerial = deviceList.firstOrNull()?.serial
+                        selectedProcessName = null
                         selectedProcessPid = null
                         processes = emptyList()
                         clearLogs()
@@ -456,12 +469,14 @@ class LogcatController(
                     when {
                         deviceList.isEmpty() -> {
                             stopStreaming()
+                            stopProcessMonitoring()
                             processes = emptyList()
                             statusMessage = "No Android devices connected."
                         }
 
                         selectedDeviceSerial != null -> {
                             refreshProcesses()
+                            startProcessMonitoring()
                             restartStreaming()
                         }
                     }
@@ -472,18 +487,18 @@ class LogcatController(
     private fun restartStreaming() {
         stopStreaming()
         val serial = selectedDeviceSerial ?: return
+        val trackedProcessName = selectedProcessName
+        val trackedPid = selectedProcessPid
+        if (trackedProcessName != null && trackedPid == null) {
+            statusMessage = "Waiting for process \"$trackedProcessName\" to start..."
+            return
+        }
         logStreamingJob =
             scope.launch {
                 isStreaming = true
                 statusMessage = "Streaming logcat from $serial..."
                 try {
-                    service.streamLogs(serial, selectedLevel, selectedProcessPid).collect { entry ->
-                        logs += entry
-                        if (logs.size > MAX_LOG_ENTRIES) {
-                            val trimSize = logs.size - MAX_LOG_ENTRIES
-                            logs.subList(0, trimSize).clear()
-                        }
-                    }
+                    service.streamLogs(serial, selectedLevel, trackedPid).collect(::appendLog)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
@@ -498,6 +513,68 @@ class LogcatController(
         logStreamingJob?.cancel()
         logStreamingJob = null
         isStreaming = false
+    }
+
+    private fun startProcessMonitoring() {
+        processMonitorJob?.cancel()
+        val serial = selectedDeviceSerial ?: return
+        val trackedProcessName = selectedProcessName ?: return
+        processMonitorJob =
+            scope.launch {
+                while (isActive) {
+                    runCatching { service.listProcesses(serial) }
+                        .onSuccess { latestProcesses ->
+                            processes = latestProcesses
+                            val newPid = latestProcesses.firstOrNull { it.name == trackedProcessName }?.pid
+                            handleTrackedProcessTransition(trackedProcessName, newPid)
+                        }
+                    delay(PROCESS_MONITOR_INTERVAL_MS)
+                }
+            }
+    }
+
+    private fun stopProcessMonitoring() {
+        processMonitorJob?.cancel()
+        processMonitorJob = null
+    }
+
+    private fun handleTrackedProcessTransition(processName: String, newPid: Int?) {
+        if (selectedProcessName != processName || selectedProcessPid == newPid) {
+            return
+        }
+        val previousPid = selectedProcessPid
+        if (previousPid != null) {
+            appendSyntheticLog("----- Process stopped: pid: $previousPid ------")
+        }
+        selectedProcessPid = newPid
+        if (newPid != null) {
+            appendSyntheticLog("----- Process started: pid: $newPid ------")
+        }
+        restartStreaming()
+    }
+
+    private fun appendSyntheticLog(message: String) {
+        appendLog(
+            LogEntry(
+                id = syntheticLogId.incrementAndGet(),
+                timestamp = "--",
+                pid = selectedProcessPid ?: -1,
+                tid = -1,
+                level = LogLevel.Info,
+                tag = "process-monitor",
+                message = message,
+                rawLine = message,
+                source = "system",
+            )
+        )
+    }
+
+    private fun appendLog(entry: LogEntry) {
+        logs += entry
+        if (logs.size > MAX_LOG_ENTRIES) {
+            val trimSize = logs.size - MAX_LOG_ENTRIES
+            logs.subList(0, trimSize).clear()
+        }
     }
 
     private suspend fun runAction(startMessage: String, action: suspend () -> Unit) {
