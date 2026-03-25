@@ -27,7 +27,6 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.adblib)
-            implementation(libs.compose.materialIconsExtended)
             implementation(libs.jewel.int.ui.standalone)
             implementation(libs.kotlinx.collections.immutable)
             implementation(libs.kotlinx.coroutinesCore)
