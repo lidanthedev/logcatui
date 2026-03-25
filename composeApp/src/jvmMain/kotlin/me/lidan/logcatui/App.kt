@@ -6,6 +6,7 @@ import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,9 +26,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,12 +42,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,10 +59,8 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Checkbox
-import org.jetbrains.jewel.ui.component.ComboBox
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.OutlinedButton
-import org.jetbrains.jewel.ui.component.PopupManager
 import org.jetbrains.jewel.ui.component.Text
 
 private val AppBackground = Color(0xFF1E1F22)
@@ -73,6 +77,7 @@ private val VerboseGray = Color(0xFF8A8F99)
 private val InfoGreen = Color(0xFF7FD37F)
 private val IconTint = Color(0xFFC7CDD7)
 private val TextFieldBackground = Color(0xFF2B2D31)
+private val TextFieldFocusedBorder = Color(0xFF4B6EAF)
 
 private enum class AppIconSymbol {
     Clear,
@@ -80,6 +85,7 @@ private enum class AppIconSymbol {
     Search,
     Close,
     ScrollToEnd,
+    ChevronDown,
 }
 
 @Composable
@@ -148,9 +154,12 @@ private fun LogcatViewer(controller: LogcatController) {
     val selectedLog by remember(filteredLogs, controller.selectedLogId) {
         derivedStateOf { filteredLogs.firstOrNull { it.id == controller.selectedLogId } }
     }
+    val lastFilteredLogId by remember(filteredLogs) {
+        derivedStateOf { filteredLogs.lastOrNull()?.id }
+    }
 
-    LaunchedEffect(filteredLogs.size, controller.autoScrollToBottom) {
-        if (controller.autoScrollToBottom && filteredLogs.isNotEmpty()) {
+    LaunchedEffect(lastFilteredLogId, controller.autoScrollToBottom) {
+        if (controller.autoScrollToBottom && lastFilteredLogId != null) {
             lazyListState.scrollToItem(filteredLogs.lastIndex)
         }
     }
@@ -280,32 +289,44 @@ private fun SearchField(
     placeholder: String,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
+    var focused by remember { mutableStateOf(false) }
+    BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier,
         singleLine = true,
         textStyle =
-            androidx.compose.ui.text.TextStyle(
+            TextStyle(
                 color = Color(0xFFE7EAF0),
                 fontFamily = FontFamily.Monospace,
             ),
-        placeholder = { Text(placeholder, color = SoftText) },
-        leadingIcon = {
-            AppIcon(AppIconSymbol.Search, modifier = Modifier.size(16.dp))
+        cursorBrush = SolidColor(Color(0xFFE7EAF0)),
+        interactionSource = remember { MutableInteractionSource() },
+        modifier =
+            modifier
+                .height(34.dp)
+                .onFocusChanged { focused = it.isFocused }
+                .border(
+                    width = 1.dp,
+                    color = if (focused) TextFieldFocusedBorder else AppBorder,
+                    shape = RoundedCornerShape(8.dp),
+                )
+                .background(TextFieldBackground, RoundedCornerShape(8.dp))
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+        decorationBox = { innerTextField ->
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AppIcon(AppIconSymbol.Search, modifier = Modifier.size(14.dp))
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) {
+                        Text(placeholder, color = SoftText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    innerTextField()
+                }
+            }
         },
-        colors =
-            OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color(0xFFE7EAF0),
-                unfocusedTextColor = Color(0xFFE7EAF0),
-                cursorColor = Color(0xFFE7EAF0),
-                focusedBorderColor = Color(0xFF4B6EAF),
-                unfocusedBorderColor = AppBorder,
-                focusedContainerColor = TextFieldBackground,
-                unfocusedContainerColor = TextFieldBackground,
-                focusedLeadingIconColor = IconTint,
-                unfocusedLeadingIconColor = IconTint,
-            ),
     )
 }
 
@@ -314,25 +335,25 @@ private fun LevelDropdown(
     selected: LogLevel,
     onSelect: (LogLevel) -> Unit,
 ) {
-    val popupManager = remember { PopupManager() }
-    ComboBox(
-        labelText = selected.label,
-        popupManager = popupManager,
-        modifier = Modifier.width(120.dp).height(32.dp),
-    ) {
-        Column(
-            modifier =
-                Modifier.background(PanelBackground)
-                    .border(1.dp, AppBorder)
-                    .width(150.dp)
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        CompactDropdownButton(
+            label = selected.label,
+            width = 120.dp,
+            expanded = expanded,
+            onClick = { expanded = !expanded },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(150.dp).background(PanelBackground),
         ) {
             LogLevel.dropdownValues.forEach { level ->
-                DropdownRow(
-                    text = level.label,
-                    selected = level == selected,
+                DropdownMenuItem(
+                    text = { Text(level.label) },
                     onClick = {
                         onSelect(level)
-                        popupManager.setPopupVisible(false)
+                        expanded = false
                     },
                 )
             }
@@ -346,31 +367,68 @@ private fun DeviceDropdown(
     selectedSerial: String?,
     onSelect: (String?) -> Unit,
 ) {
-    val popupManager = remember { PopupManager() }
+    var expanded by remember { mutableStateOf(false) }
     val selectedLabel = devices.firstOrNull { it.serial == selectedSerial }?.label ?: "No device"
-    ComboBox(
-        labelText = selectedLabel,
-        popupManager = popupManager,
-        modifier = Modifier.width(280.dp).height(32.dp),
-        enabled = devices.isNotEmpty(),
-    ) {
-        Column(
-            modifier =
-                Modifier.background(PanelBackground)
-                    .border(1.dp, AppBorder)
-                    .width(320.dp)
+    Box {
+        CompactDropdownButton(
+            label = selectedLabel,
+            width = 280.dp,
+            expanded = expanded,
+            enabled = devices.isNotEmpty(),
+            onClick = { expanded = !expanded },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(320.dp).background(PanelBackground),
         ) {
             devices.forEach { device ->
-                DropdownRow(
-                    text = "${device.model}  ${device.serial}",
-                    secondaryText = device.state,
-                    selected = device.serial == selectedSerial,
+                DropdownMenuItem(
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("${device.model}  ${device.serial}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(device.state, color = SoftText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    },
                     onClick = {
                         onSelect(device.serial)
-                        popupManager.setPopupVisible(false)
+                        expanded = false
                     },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CompactDropdownButton(
+    label: String,
+    width: Dp,
+    expanded: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.width(width).height(32.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            AppIcon(
+                icon = AppIconSymbol.ChevronDown,
+                modifier = Modifier.size(14.dp),
+                tint = if (enabled) IconTint else SoftText,
+            )
         }
     }
 }
@@ -834,6 +892,23 @@ private fun AppIcon(
                     color = tint,
                     start = Offset(size.width * 0.24f, size.height * 0.84f),
                     end = Offset(size.width * 0.76f, size.height * 0.84f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            AppIconSymbol.ChevronDown -> {
+                drawLine(
+                    color = tint,
+                    start = Offset(size.width * 0.24f, size.height * 0.36f),
+                    end = Offset(size.width * 0.5f, size.height * 0.64f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = tint,
+                    start = Offset(size.width * 0.76f, size.height * 0.36f),
+                    end = Offset(size.width * 0.5f, size.height * 0.64f),
                     strokeWidth = strokeWidth,
                     cap = StrokeCap.Round,
                 )
