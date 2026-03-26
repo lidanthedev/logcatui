@@ -50,6 +50,7 @@ import org.jetbrains.jewel.ui.component.Checkbox
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 private val AppBackground = Color(0xFF1E1F22)
 private val AppBorder = Color(0xFF393B40)
@@ -74,6 +75,8 @@ private enum class AppIconSymbol {
     Close,
     ScrollToEnd,
     ChevronDown,
+    Pause,
+    Resume,
 }
 
 @Composable
@@ -249,6 +252,11 @@ private fun Toolbar(
         }
         OutlinedButton(onClick = controller::restartAdb) {
             ToolbarButtonContent(AppIconSymbol.Refresh, "Restart ADB")
+        }
+        OutlinedButton(onClick = controller::togglePause) {
+            val icon = if (controller.isPaused) AppIconSymbol.Resume else AppIconSymbol.Pause
+            val label = if (controller.isPaused) "Resume" else "Pause"
+            ToolbarButtonContent(icon, label)
         }
         SearchField(
             value = controller.searchQuery,
@@ -1059,6 +1067,36 @@ private fun AppIcon(
                     strokeWidth = strokeWidth,
                     cap = StrokeCap.Round,
                 )
+            }
+
+            AppIconSymbol.Pause -> {
+                // Left pause bar
+                drawLine(
+                    color = tint,
+                    start = Offset(size.width * 0.3f, size.height * 0.25f),
+                    end = Offset(size.width * 0.3f, size.height * 0.75f),
+                    strokeWidth = strokeWidth * 1.5f,
+                    cap = StrokeCap.Round,
+                )
+                // Right pause bar
+                drawLine(
+                    color = tint,
+                    start = Offset(size.width * 0.7f, size.height * 0.25f),
+                    end = Offset(size.width * 0.7f, size.height * 0.75f),
+                    strokeWidth = strokeWidth * 1.5f,
+                    cap = StrokeCap.Round,
+                )
+            }
+
+            AppIconSymbol.Resume -> {
+                // Play triangle
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(size.width * 0.3f, size.height * 0.25f)
+                    lineTo(size.width * 0.3f, size.height * 0.75f)
+                    lineTo(size.width * 0.75f, size.height * 0.5f)
+                    close()
+                }
+                drawPath(path, color = tint)
             }
         }
     }

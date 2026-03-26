@@ -29,8 +29,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
@@ -353,6 +351,8 @@ class LogcatController(
         private set
     var isStreaming by mutableStateOf(false)
         private set
+    var isPaused by mutableStateOf(false)
+        private set
     var selectedLogId by mutableStateOf<Long?>(null)
         private set
     val logs = mutableStateListOf<LogEntry>()
@@ -439,6 +439,10 @@ class LogcatController(
         if (entry != null) {
             detailExpanded = true
         }
+    }
+
+    fun togglePause() {
+        isPaused = !isPaused
     }
 
     fun refreshProcesses() {
@@ -581,10 +585,16 @@ class LogcatController(
     }
 
     private fun appendLog(entry: LogEntry) {
-        logs += entry
-        if (logs.size > MAX_LOG_ENTRIES) {
-            val trimSize = logs.size - MAX_LOG_ENTRIES
-            logs.subList(0, trimSize).clear()
+        scope.launch {
+            // Wait if paused
+            while (isPaused) {
+                delay(50) // Check pause state every 50ms
+            }
+            logs += entry
+            if (logs.size > MAX_LOG_ENTRIES) {
+                val trimSize = logs.size - MAX_LOG_ENTRIES
+                logs.subList(0, trimSize).clear()
+            }
         }
     }
 
