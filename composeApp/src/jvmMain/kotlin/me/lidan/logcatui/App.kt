@@ -1076,8 +1076,15 @@ private suspend fun LazyListState.scrollToItemIfNotVisible(index: Int) {
 
     val firstVisible = visibleItems.first().index
     val lastVisible = visibleItems.last().index
-    if (index < firstVisible || index > lastVisible) {
+    if (index < firstVisible) {
         scrollToItem(index)
+        return
+    }
+
+    if (index > lastVisible) {
+        val nextFirstVisible = (firstVisible + 1).coerceAtMost(index)
+        // Keep keyboard Down navigation feeling incremental instead of jumping selection to top.
+        scrollToItem(nextFirstVisible, firstVisibleItemScrollOffset)
     }
 }
 
