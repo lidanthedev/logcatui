@@ -169,7 +169,7 @@ jobs:
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-msi
+          name: windows-exe
           path: composeApp/build/compose/binaries/main/exe/*.exe
           if-no-files-found: error
 
