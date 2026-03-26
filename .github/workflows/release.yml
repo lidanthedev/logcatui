@@ -197,3 +197,4 @@ jobs:
             release-assets/**/*.rpm
             release-assets/**/*.dmg
             release-assets/**/*.msi
+            release-assets/**/*.exe
