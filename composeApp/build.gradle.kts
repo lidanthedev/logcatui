@@ -1,5 +1,7 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
+val releaseVersion = providers.gradleProperty("releaseVersion").orElse("1.0.0")
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
@@ -48,7 +50,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "me.lidan.logcatui"
-            packageVersion = "1.0.0"
+            packageVersion = releaseVersion.get()
         }
     }
 }
