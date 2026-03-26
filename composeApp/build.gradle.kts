@@ -51,6 +51,16 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Exe)
             packageName = "LogcatUI"
             packageVersion = releaseVersion.get()
+
+            windows {
+                menu = true
+                menuGroup = "LidanDev"
+                shortcut = true
+            }
+            linux {
+                shortcut = true
+                menuGroup = "Development"
+            }
         }
     }
 }
