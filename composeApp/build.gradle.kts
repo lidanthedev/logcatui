@@ -48,8 +48,8 @@ compose.desktop {
         mainClass = "me.lidan.logcatui.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
-            packageName = "me.lidan.logcatui"
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Exe)
+            packageName = "LogcatUI"
             packageVersion = releaseVersion.get()
         }
     }
