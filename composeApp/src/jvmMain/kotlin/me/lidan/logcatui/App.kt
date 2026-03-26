@@ -29,10 +29,13 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -40,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.text.RegexOption
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Checkbox
@@ -89,8 +93,11 @@ fun App() {
 private fun LogcatViewer(controller: LogcatController) {
     val lazyListState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
+    val clipboardManager = LocalClipboardManager.current
     var deviceSearchQuery by remember { mutableStateOf("") }
     var processSearchQuery by remember { mutableStateOf("") }
+    var copyToastMessage by remember { mutableStateOf<String?>(null) }
+    var copyToastNonce by remember { mutableIntStateOf(0) }
 
     val searchMatcherResult by remember(controller.searchQuery, controller.regexEnabled) {
         derivedStateOf {
@@ -136,6 +143,13 @@ private fun LogcatViewer(controller: LogcatController) {
             }
     }
 
+    LaunchedEffect(copyToastNonce) {
+        if (copyToastMessage != null) {
+            delay(1400)
+            copyToastMessage = null
+        }
+    }
+
     Box(
         modifier =
             Modifier.fillMaxSize()
@@ -178,6 +192,11 @@ private fun LogcatViewer(controller: LogcatController) {
                     logs = filteredLogs,
                     selectedLog = selectedLog,
                     lazyListState = lazyListState,
+                    onCopyRawLog = { rawLine ->
+                        clipboardManager.setText(AnnotatedString(rawLine))
+                        copyToastMessage = "Copied to clipboard"
+                        copyToastNonce++
+                    },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -189,6 +208,13 @@ private fun LogcatViewer(controller: LogcatController) {
                     )
                 }
             }
+        }
+
+        copyToastMessage?.let { message ->
+            ToastMessage(
+                message = message,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            )
         }
     }
 }
@@ -602,6 +628,7 @@ private fun MainPanel(
     logs: List<LogEntry>,
     selectedLog: LogEntry?,
     lazyListState: LazyListState,
+    onCopyRawLog: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -656,6 +683,10 @@ private fun MainPanel(
                     .onPreviewKeyEvent {
                         if (it.type != KeyEventType.KeyDown) {
                             return@onPreviewKeyEvent false
+                        }
+                        if (it.isCtrlPressed && it.key == Key.C) {
+                            selectedLog?.rawLine?.let(onCopyRawLog)
+                            return@onPreviewKeyEvent selectedLog != null
                         }
                         when (it.key) {
                             Key.DirectionUp -> moveSelection(delta = -1)
@@ -1218,3 +1249,20 @@ private fun parseSearchToken(token: String): LogSearchToken {
             )
     }
 }
+
+@Composable
+private fun ToastMessage(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier =
+            modifier
+                .background(PanelAltBackground, RoundedCornerShape(8.dp))
+                .border(1.dp, AppBorder, RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Text(message, color = Color(0xFFE7EAF0))
+    }
+}
+
