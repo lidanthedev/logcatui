@@ -150,6 +150,18 @@ private fun LogcatViewer(controller: LogcatController) {
         }
     }
 
+    LaunchedEffect(controller.detailExpanded, selectedLog?.id, filteredLogs.size) {
+        val currentSelectedLog = selectedLog
+        if (!controller.detailExpanded || currentSelectedLog == null) {
+            return@LaunchedEffect
+        }
+        val selectedIndex = filteredLogs.indexOfFirst { it.id == currentSelectedLog.id }
+        if (selectedIndex >= 0) {
+            // Detail panel reduces list height; ensure the selected row stays visible.
+            lazyListState.scrollToItemIfNotVisible(selectedIndex, keepIncrementalDown = false)
+        }
+    }
+
     Box(
         modifier =
             Modifier.fillMaxSize()
@@ -1098,7 +1110,10 @@ private fun LazyListState.isAtBottom(): Boolean {
     return lastVisibleItem.index >= layoutInfo.totalItemsCount - 1
 }
 
-private suspend fun LazyListState.scrollToItemIfNotVisible(index: Int) {
+private suspend fun LazyListState.scrollToItemIfNotVisible(
+    index: Int,
+    keepIncrementalDown: Boolean = true,
+) {
     val visibleItems = layoutInfo.visibleItemsInfo
     if (visibleItems.isEmpty()) {
         scrollToItem(index)
@@ -1113,9 +1128,13 @@ private suspend fun LazyListState.scrollToItemIfNotVisible(index: Int) {
     }
 
     if (index > lastVisible) {
-        val nextFirstVisible = (firstVisible + 1).coerceAtMost(index)
-        // Keep keyboard Down navigation feeling incremental instead of jumping selection to top.
-        scrollToItem(nextFirstVisible, firstVisibleItemScrollOffset)
+        if (keepIncrementalDown) {
+            val nextFirstVisible = (firstVisible + 1).coerceAtMost(index)
+            // Keep keyboard Down navigation feeling incremental instead of jumping selection to top.
+            scrollToItem(nextFirstVisible, firstVisibleItemScrollOffset)
+        } else {
+            scrollToItem(index)
+        }
     }
 }
 
