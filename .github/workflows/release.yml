@@ -42,15 +42,39 @@ jobs:
             DRAFT="false"
           fi
 
-          if [[ -z "${VERSION}" ]]; then
-          VERSION="${TAG#v}"
-          if [[ "${VERSION}" != *.*.* ]]; then
-            if [[ "${VERSION}" == *.* ]]; then
-              VERSION="${VERSION}.0"
-            else
-              VERSION="${VERSION}.0.0"
-            fi
+          # Build an MSI-safe package version: MAJOR.MINOR.BUILD (numeric only).
+          RAW_VERSION="${VERSION:-${TAG#v}}"
+          RAW_VERSION="${RAW_VERSION#v}"
+
+          IFS='.' read -r -a VERSION_PARTS <<< "${RAW_VERSION}"
+          case "${#VERSION_PARTS[@]}" in
+            1)
+              VERSION="${VERSION_PARTS[0]}.0.0"
+              ;;
+            2)
+              VERSION="${VERSION_PARTS[0]}.${VERSION_PARTS[1]}.0"
+              ;;
+            3)
+              VERSION="${RAW_VERSION}"
+              ;;
+            *)
+              echo "Invalid release version '${RAW_VERSION}'. Use X, X.Y, or X.Y.Z." >&2
+              exit 1
+              ;;
+          esac
+
+          if ! [[ "${VERSION}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Invalid release version '${VERSION}'. MSI requires numeric MAJOR.MINOR.BUILD." >&2
+            exit 1
           fi
+
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+          BUILD="${BASH_REMATCH[3]}"
+
+          if (( MAJOR > 255 || MINOR > 255 || BUILD > 65535 )); then
+            echo "Invalid release version '${VERSION}'. Limits: MAJOR<=255, MINOR<=255, BUILD<=65535." >&2
+            exit 1
           fi
 
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
