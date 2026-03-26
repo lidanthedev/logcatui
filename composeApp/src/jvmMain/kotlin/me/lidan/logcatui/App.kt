@@ -1,6 +1,7 @@
 package me.lidan.logcatui
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -602,6 +605,27 @@ private fun MainPanel(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
+    val focusRequester = remember { FocusRequester() }
+
+    fun moveSelection(delta: Int): Boolean {
+        if (logs.isEmpty()) return false
+
+        val currentIndex = selectedLog?.let { selected -> logs.indexOfFirst { it.id == selected.id } } ?: -1
+        val targetIndex =
+            when {
+                currentIndex == -1 && delta > 0 -> 0
+                currentIndex == -1 && delta < 0 -> logs.lastIndex
+                else -> (currentIndex + delta).coerceIn(0, logs.lastIndex)
+            }
+
+        controller.autoScrollToBottom = false
+        controller.selectLog(logs[targetIndex])
+        scope.launch {
+            lazyListState.scrollToItemIfNotVisible(targetIndex)
+        }
+        return true
+    }
+
     Column(
         modifier =
             modifier.fillMaxHeight()
@@ -623,7 +647,23 @@ private fun MainPanel(
         HorizontalDivider(color = AppBorder)
         TableHeader()
         HorizontalDivider(color = AppBorder)
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Box(
+            modifier =
+                Modifier.weight(1f)
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .focusable()
+                    .onPreviewKeyEvent {
+                        if (it.type != KeyEventType.KeyDown) {
+                            return@onPreviewKeyEvent false
+                        }
+                        when (it.key) {
+                            Key.DirectionUp -> moveSelection(delta = -1)
+                            Key.DirectionDown -> moveSelection(delta = 1)
+                            else -> false
+                        }
+                    },
+        ) {
             LazyColumn(
                 state = lazyListState,
                 modifier = Modifier.fillMaxSize().padding(end = 12.dp),
@@ -632,7 +672,11 @@ private fun MainPanel(
                     LogRow(
                         entry = entry,
                         selected = entry.id == selectedLog?.id,
-                        onClick = { controller.selectLog(entry) },
+                        onClick = {
+                            controller.autoScrollToBottom = false
+                            controller.selectLog(entry)
+                            focusRequester.requestFocus()
+                        },
                     )
                 }
             }
@@ -1021,6 +1065,20 @@ private fun LazyListState.isAtBottom(): Boolean {
     val layoutInfo = layoutInfo
     val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull() ?: return true
     return lastVisibleItem.index >= layoutInfo.totalItemsCount - 1
+}
+
+private suspend fun LazyListState.scrollToItemIfNotVisible(index: Int) {
+    val visibleItems = layoutInfo.visibleItemsInfo
+    if (visibleItems.isEmpty()) {
+        scrollToItem(index)
+        return
+    }
+
+    val firstVisible = visibleItems.first().index
+    val lastVisible = visibleItems.last().index
+    if (index < firstVisible || index > lastVisible) {
+        scrollToItem(index)
+    }
 }
 
 private fun Modifier.clearSelectionOnBackgroundTap(
