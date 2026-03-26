@@ -344,6 +344,8 @@ class LogcatController(
     var selectedLevel by mutableStateOf(LogLevel.Verbose)
         private set
     var searchQuery by mutableStateOf("")
+    var filterHistory by mutableStateOf<List<String>>(emptyList())
+        private set
     var regexEnabled by mutableStateOf(false)
     var autoScrollToBottom by mutableStateOf(true)
     var detailExpanded by mutableStateOf(true)
@@ -397,6 +399,15 @@ class LogcatController(
         selectedLevel = level
         clearLogs()
         restartStreaming()
+    }
+
+    fun saveCurrentFilterToHistory() {
+        saveFilterToHistory(searchQuery)
+    }
+
+    fun applyFilterFromHistory(filter: String) {
+        searchQuery = filter
+        saveFilterToHistory(filter)
     }
 
     fun clearLogs() {
@@ -574,6 +585,17 @@ class LogcatController(
         if (logs.size > MAX_LOG_ENTRIES) {
             val trimSize = logs.size - MAX_LOG_ENTRIES
             logs.subList(0, trimSize).clear()
+        }
+    }
+
+    private fun saveFilterToHistory(filter: String) {
+        val normalized = filter.trim()
+        if (normalized.isEmpty()) {
+            return
+        }
+        filterHistory = listOf(normalized) + filterHistory.filterNot { it == normalized }
+        if (filterHistory.size > 15) {
+            filterHistory = filterHistory.take(15)
         }
     }
 

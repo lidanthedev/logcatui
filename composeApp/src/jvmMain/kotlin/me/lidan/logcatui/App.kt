@@ -24,6 +24,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -31,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.text.RegexOption
 import kotlinx.coroutines.launch
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Checkbox
@@ -83,38 +89,15 @@ private fun LogcatViewer(controller: LogcatController) {
     var deviceSearchQuery by remember { mutableStateOf("") }
     var processSearchQuery by remember { mutableStateOf("") }
 
-    val searchPatternResult by remember(controller.searchQuery, controller.regexEnabled) {
+    val searchMatcherResult by remember(controller.searchQuery, controller.regexEnabled) {
         derivedStateOf {
-            if (controller.searchQuery.isBlank()) {
-                null
-            } else if (controller.regexEnabled) {
-                runCatching { Regex(controller.searchQuery, RegexOption.IGNORE_CASE) }
-            } else {
-                null
-            }
+            buildLogSearchMatcher(controller.searchQuery, controller.regexEnabled)
         }
     }
     val filteredLogs by remember(controller.logs, controller.searchQuery, controller.regexEnabled) {
         derivedStateOf {
-            val query = controller.searchQuery.trim()
-            val regex = searchPatternResult?.getOrNull()
-            controller.logs.filter { entry ->
-                when {
-                    query.isEmpty() -> true
-                    controller.regexEnabled && regex != null ->
-                        regex.containsMatchIn(entry.tag) ||
-                                regex.containsMatchIn(entry.message) ||
-                                regex.containsMatchIn(entry.rawLine)
-
-                    controller.regexEnabled -> true
-                    else -> {
-                        val needle = query.lowercase()
-                        entry.tag.lowercase().contains(needle) ||
-                                entry.message.lowercase().contains(needle) ||
-                                entry.rawLine.lowercase().contains(needle)
-                    }
-                }
-            }
+            val matcher = searchMatcherResult.getOrNull()
+            controller.logs.filter { entry -> matcher?.matches(entry) ?: true }
         }
     }
     val filteredDevices by remember(controller.devices, deviceSearchQuery) {
@@ -159,7 +142,7 @@ private fun LogcatViewer(controller: LogcatController) {
         Column(modifier = Modifier.fillMaxSize()) {
             Toolbar(
                 controller = controller,
-                regexError = searchPatternResult?.exceptionOrNull()?.message,
+                regexError = searchMatcherResult.exceptionOrNull()?.message,
             )
             HorizontalDivider(color = AppBorder)
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -229,8 +212,13 @@ private fun Toolbar(
         SearchField(
             value = controller.searchQuery,
             onValueChange = { controller.searchQuery = it },
+            onSubmit = controller::saveCurrentFilterToHistory,
             placeholder = "Search tag, message, or raw log line",
             modifier = Modifier.weight(1f),
+        )
+        FilterHistoryDropdown(
+            history = controller.filterHistory,
+            onSelect = controller::applyFilterFromHistory,
         )
         Checkbox(
             checked = controller.regexEnabled,
@@ -273,6 +261,7 @@ private fun ToolbarButtonContent(icon: AppIconSymbol, label: String) {
 private fun SearchField(
     value: String,
     onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit = {},
     placeholder: String,
     modifier: Modifier = Modifier,
 ) {
@@ -281,6 +270,7 @@ private fun SearchField(
         onValueChange,
         modifier,
         placeholder,
+        onSubmit = onSubmit,
         icon = { AppIcon(AppIconSymbol.Search, modifier = Modifier.size(14.dp)) })
 }
 
@@ -291,6 +281,7 @@ fun AppTextField(
     modifier: Modifier,
     placeholder: String,
     readOnly: Boolean = false,
+    onSubmit: () -> Unit = {},
     icon: @Composable RowScope.() -> Unit = {}
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -310,6 +301,14 @@ fun AppTextField(
             modifier
                 .height(34.dp)
                 .onFocusChanged { focused = it.isFocused }
+                .onPreviewKeyEvent {
+                    if (it.type == KeyEventType.KeyDown && (it.key == Key.Enter || it.key == Key.NumPadEnter)) {
+                        onSubmit()
+                        true
+                    } else {
+                        false
+                    }
+                }
                 .border(
                     width = 1.dp,
                     color = if (focused) TextFieldFocusedBorder else AppBorder,
@@ -402,6 +401,55 @@ private fun DeviceDropdown(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun FilterHistoryDropdown(
+    history: List<String>,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        CompactDropdownButton(
+            label = if (history.isEmpty()) "History" else "History (${history.size})",
+            width = 130.dp,
+            expanded = expanded,
+            enabled = history.isNotEmpty(),
+            onClick = { expanded = !expanded },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(360.dp).background(PanelAltBackground),
+        ) {
+            history.forEach { filter ->
+                DropdownMenuItem(
+                    text = {Text(filter, maxLines = 2, overflow = TextOverflow.Ellipsis)},
+                    onClick = {
+                        onSelect(filter)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DropdownMenuSelectableItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier =
+            Modifier.fillMaxWidth()
+                .background(if (selected) SelectedRowBackground else Color.Transparent)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        content()
     }
 }
 
@@ -986,3 +1034,122 @@ private fun Modifier.clearSelectionOnBackgroundTap(
         focusManager.clearFocus(force = true)
         onClearSelection()
     }
+
+private enum class LogSearchField {
+    Any,
+    Tag,
+    Message,
+}
+
+private data class LogSearchToken(
+    val field: LogSearchField,
+    val negated: Boolean,
+    val value: String,
+)
+
+private data class CompiledLogSearchToken(
+    val field: LogSearchField,
+    val negated: Boolean,
+    val matches: (String) -> Boolean,
+)
+
+private data class LogSearchMatcher(
+    val tokens: List<CompiledLogSearchToken>,
+) {
+    fun matches(entry: LogEntry): Boolean {
+        return tokens.all { token ->
+            val matched =
+                when (token.field) {
+                    LogSearchField.Any ->
+                        token.matches(entry.tag) ||
+                            token.matches(entry.message) ||
+                            token.matches(entry.rawLine)
+
+                    LogSearchField.Tag -> token.matches(entry.tag)
+                    LogSearchField.Message -> token.matches(entry.message)
+                }
+            if (token.negated) !matched else matched
+        }
+    }
+}
+
+private fun buildLogSearchMatcher(
+    query: String,
+    regexEnabled: Boolean,
+): Result<LogSearchMatcher?> {
+    val normalized = query.trim()
+    if (normalized.isEmpty()) {
+        return Result.success(null)
+    }
+
+    return runCatching {
+        val tokens =
+            tokenizeSearchQuery(normalized).map { token ->
+                val parsed = parseSearchToken(token)
+                val matcher: (String) -> Boolean
+                if (regexEnabled) {
+                    val regex = kotlin.text.Regex(parsed.value, setOf(RegexOption.IGNORE_CASE))
+                    matcher = { text: String -> regex.containsMatchIn(text) }
+                } else {
+                    val needle = parsed.value.lowercase()
+                    matcher = { text: String -> text.lowercase().contains(needle) }
+                }
+                CompiledLogSearchToken(
+                    field = parsed.field,
+                    negated = parsed.negated,
+                    matches = matcher,
+                )
+            }
+        LogSearchMatcher(tokens)
+    }
+}
+
+private fun tokenizeSearchQuery(query: String): List<String> {
+    val tokens = mutableListOf<String>()
+    val current = StringBuilder()
+    var inQuotes = false
+    query.forEach { ch ->
+        when {
+            ch == '"' -> inQuotes = !inQuotes
+            ch.isWhitespace() && !inQuotes -> {
+                if (current.isNotEmpty()) {
+                    tokens += current.toString()
+                    current.clear()
+                }
+            }
+
+            else -> current.append(ch)
+        }
+    }
+    if (current.isNotEmpty()) {
+        tokens += current.toString()
+    }
+    return tokens
+}
+
+private fun parseSearchToken(token: String): LogSearchToken {
+    val negated = token.startsWith("-")
+    val body = if (negated) token.drop(1) else token
+    return when {
+        body.startsWith("tag:", ignoreCase = true) ->
+            LogSearchToken(
+                field = LogSearchField.Tag,
+                negated = negated,
+                value = body.substringAfter(':'),
+            )
+
+        body.startsWith("message:", ignoreCase = true) ->
+            LogSearchToken(
+                field = LogSearchField.Message,
+                negated = negated,
+                value = body.substringAfter(':'),
+            )
+
+        else ->
+            LogSearchToken(
+                field = LogSearchField.Any,
+                negated = negated,
+                value = body,
+            )
+    }
+}
