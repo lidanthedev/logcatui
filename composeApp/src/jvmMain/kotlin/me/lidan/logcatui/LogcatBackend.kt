@@ -346,14 +346,11 @@ class LogcatController(
         private set
     var regexEnabled by mutableStateOf(false)
     var autoScrollToBottom by mutableStateOf(true)
-    var detailExpanded by mutableStateOf(true)
     var statusMessage by mutableStateOf("Connecting to ADB server...")
         private set
     var isStreaming by mutableStateOf(false)
         private set
     var isPaused by mutableStateOf(false)
-        private set
-    var selectedLogId by mutableStateOf<Long?>(null)
         private set
     val logs = mutableStateListOf<LogEntry>()
 
@@ -412,7 +409,6 @@ class LogcatController(
 
     fun clearLogs() {
         logs.clear()
-        selectedLogId = null
     }
 
     fun clearDeviceLogs() {
@@ -434,11 +430,13 @@ class LogcatController(
         }
     }
 
-    fun selectLog(entry: LogEntry?) {
-        selectedLogId = entry?.id
-        if (entry != null) {
-            detailExpanded = true
-        }
+    fun refreshDevices() {
+        observeDevices()
+    }
+
+    fun refreshLogs() {
+        clearLogs()
+        restartStreaming()
     }
 
     fun togglePause() {
@@ -491,8 +489,10 @@ class LogcatController(
 
                         selectedDeviceSerial != null -> {
                             refreshProcesses()
-                            startProcessMonitoring()
-                            restartStreaming()
+                            if (!currentExists || !isStreaming) {
+                                startProcessMonitoring()
+                                restartStreaming()
+                            }
                         }
                     }
                 }
