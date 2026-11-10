@@ -46,6 +46,8 @@ kotlin {
 compose.desktop {
     application {
         mainClass = "me.lidan.logcatui.MainKt"
+        // Keep Compose menus above the embedded Swing log output.
+        jvmArgs += "-Dcompose.layers.type=WINDOW"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Exe)

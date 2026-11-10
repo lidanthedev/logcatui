@@ -94,15 +94,27 @@ data class LogEntry(
     val receivedAt: Instant = Instant.now(),
 )
 
+interface LogcatService : AutoCloseable {
+    fun trackDevices(): Flow<List<DeviceDescriptor>>
+
+    suspend fun listProcesses(serial: String): List<ProcessDescriptor>
+
+    fun streamLogs(serial: String, minimumLevel: LogLevel, pid: Int?): Flow<LogEntry>
+
+    suspend fun restartAdb()
+
+    suspend fun clearDeviceLogs(serial: String)
+}
+
 private val syntheticLogId = AtomicLong(1_000_000_000L)
 
-class AdbLogcatService : AutoCloseable {
+class AdbLogcatService : LogcatService {
     private val sessionMutex = Mutex()
     private var host = AdbSessionHost()
     private var session = createSession(host)
     private val adbExecutable = AdbExecutableLocator.locate()
 
-    fun trackDevices(): Flow<List<DeviceDescriptor>> =
+    override fun trackDevices(): Flow<List<DeviceDescriptor>> =
         flow {
             while (currentCoroutineContext().isActive) {
                 try {
@@ -122,7 +134,7 @@ class AdbLogcatService : AutoCloseable {
             }
         }
 
-    suspend fun listProcesses(serial: String): List<ProcessDescriptor> {
+    override suspend fun listProcesses(serial: String): List<ProcessDescriptor> {
         ensureAdbServer()
         val selector = DeviceSelector.fromSerialNumber(serial)
         val currentSession = snapshotSession()
@@ -135,7 +147,7 @@ class AdbLogcatService : AutoCloseable {
         return parseProcesses(output)
     }
 
-    fun streamLogs(
+    override fun streamLogs(
         serial: String,
         minimumLevel: LogLevel,
         pid: Int?,
@@ -170,7 +182,7 @@ class AdbLogcatService : AutoCloseable {
         }
     }
 
-    suspend fun restartAdb() {
+    override suspend fun restartAdb() {
         val adb = adbExecutable ?: throw IOException("Unable to locate adb. Set ANDROID_SDK_ROOT or add adb to PATH.")
         runAdbCommand(adb, "kill-server")
         runAdbCommand(adb, "start-server")
@@ -182,7 +194,7 @@ class AdbLogcatService : AutoCloseable {
         }
     }
 
-    suspend fun clearDeviceLogs(serial: String) {
+    override suspend fun clearDeviceLogs(serial: String) {
         ensureAdbServer()
         snapshotSession().deviceServices.shellAsText(
             DeviceSelector.fromSerialNumber(serial),
@@ -321,13 +333,16 @@ private object AdbExecutableLocator {
 }
 
 class LogcatController(
-    private val service: AdbLogcatService,
+    private val service: LogcatService,
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var deviceTrackingJob: Job? = null
     private var processRefreshJob: Job? = null
     private var processMonitorJob: Job? = null
     private var logStreamingJob: Job? = null
+    // Process markers survive stream restarts, but clearing the output invalidates them too.
+    private var clearGeneration = 0L
+    private var streamGeneration = 0L
 
     var devices by mutableStateOf<List<DeviceDescriptor>>(emptyList())
         private set
@@ -346,14 +361,11 @@ class LogcatController(
         private set
     var regexEnabled by mutableStateOf(false)
     var autoScrollToBottom by mutableStateOf(true)
-    var detailExpanded by mutableStateOf(true)
     var statusMessage by mutableStateOf("Connecting to ADB server...")
         private set
     var isStreaming by mutableStateOf(false)
         private set
     var isPaused by mutableStateOf(false)
-        private set
-    var selectedLogId by mutableStateOf<Long?>(null)
         private set
     val logs = mutableStateListOf<LogEntry>()
 
@@ -411,8 +423,9 @@ class LogcatController(
     }
 
     fun clearLogs() {
+        clearGeneration++
+        streamGeneration++
         logs.clear()
-        selectedLogId = null
     }
 
     fun clearDeviceLogs() {
@@ -434,11 +447,13 @@ class LogcatController(
         }
     }
 
-    fun selectLog(entry: LogEntry?) {
-        selectedLogId = entry?.id
-        if (entry != null) {
-            detailExpanded = true
-        }
+    fun refreshDevices() {
+        observeDevices()
+    }
+
+    fun refreshLogs() {
+        clearLogs()
+        restartStreaming()
     }
 
     fun togglePause() {
@@ -491,8 +506,10 @@ class LogcatController(
 
                         selectedDeviceSerial != null -> {
                             refreshProcesses()
-                            startProcessMonitoring()
-                            restartStreaming()
+                            if (!currentExists || !isStreaming) {
+                                startProcessMonitoring()
+                                restartStreaming()
+                            }
                         }
                     }
                 }
@@ -501,6 +518,7 @@ class LogcatController(
 
     private fun restartStreaming() {
         stopStreaming()
+        val generation = streamGeneration
         val serial = selectedDeviceSerial ?: return
         val trackedProcessName = selectedProcessName
         val trackedPid = selectedProcessPid
@@ -513,7 +531,9 @@ class LogcatController(
                 isStreaming = true
                 statusMessage = "Ready."
                 try {
-                    service.streamLogs(serial, selectedLevel, trackedPid).collect(::appendLog)
+                    service.streamLogs(serial, selectedLevel, trackedPid).collect { entry ->
+                        appendLog(entry, generation)
+                    }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
@@ -525,6 +545,7 @@ class LogcatController(
     }
 
     private fun stopStreaming() {
+        streamGeneration++
         logStreamingJob?.cancel()
         logStreamingJob = null
         isStreaming = false
@@ -584,11 +605,21 @@ class LogcatController(
         )
     }
 
-    private fun appendLog(entry: LogEntry) {
+    private fun appendLog(entry: LogEntry, expectedStreamGeneration: Long? = null) {
+        val expectedClearGeneration = clearGeneration
         scope.launch {
-            // Wait if paused
             while (isPaused) {
-                delay(50) // Check pause state every 50ms
+                if (expectedClearGeneration != clearGeneration ||
+                    (expectedStreamGeneration != null && expectedStreamGeneration != streamGeneration)
+                ) {
+                    return@launch
+                }
+                delay(50)
+            }
+            if (expectedClearGeneration != clearGeneration ||
+                (expectedStreamGeneration != null && expectedStreamGeneration != streamGeneration)
+            ) {
+                return@launch
             }
             logs += entry
             if (logs.size > MAX_LOG_ENTRIES) {

@@ -9,8 +9,8 @@ It is meant to feel close to the modern Android Studio logcat experience while s
 
 ## What It Does
 
-- Lists connected Android devices through `adb`
-- Lists running processes for the selected device
+- Lists connected Android devices through `adb`, with a manual refresh button
+- Lists running processes for the selected device, with a manual refresh button
 - Streams `logcat` in real time without blocking the UI
 - Filters logs by:
   - device
@@ -28,19 +28,16 @@ It is meant to feel close to the modern Android Studio logcat experience while s
 ## UI Overview
 
 - `Devices` sidebar:
-  Pick the active device and filter the device list.
+  Pick the active device, filter the device list, or refresh connected devices.
 
 - `Processes` sidebar:
-  Pick a process or `All processes`. If a selected process restarts with a new PID, the app follows it automatically.
+  Pick a process or `All processes`, or refresh running processes. If a selected process restarts with a new PID, the app follows it automatically.
 
 - Top toolbar:
   Main log search, filter history, regex toggle, auto-scroll toggle, log level selector, device selector, clear logs, and restart ADB.
 
-- Main log table:
-  Shows timestamp, level, tag, and message in a monospaced layout.
-
-- Detail panel:
-  Click a row to inspect the full raw log line.
+- Log output:
+  Shows full log lines as monospaced text colored by severity. Drag across lines to select and copy multiple logs. Long messages wrap without truncation. Use `Refresh Logs` to reload the device's buffered logs without clearing them on the device.
 
 ## Requirements
 
@@ -86,7 +83,7 @@ If Gradle fails because the system Java does not include `javac`, point `JAVA_HO
 2. Select a device from the `Devices` sidebar or toolbar dropdown.
 3. Optionally select a process from the `Processes` sidebar.
 4. Use the top search field to narrow logs.
-5. Click a row to inspect the full message in the bottom panel.
+5. Drag across the log text to select multiple lines, then copy with `Ctrl+C` or `Cmd+C`. Use `Ctrl+A` or `Cmd+A` to select all retained output. Selecting text turns off auto-scroll.
 
 ## Search Syntax
 
@@ -135,10 +132,10 @@ If a regex is invalid, the toolbar shows the parse error and filtering is not ap
 
 ## Auto-Scroll Behavior
 
-- If `Auto-scroll` is enabled, new logs keep the table pinned to the bottom
+- If `Auto-scroll` is enabled, new logs keep the output pinned to the bottom
 - If you manually scroll upward, auto-scroll turns off
 - If you scroll back to the bottom manually, auto-scroll turns back on
-- `Scroll to End` jumps to the latest row and re-enables auto-scroll
+- `Scroll to End` jumps to the latest line and re-enables auto-scroll
 
 ## Process Tracking Behavior
 
@@ -157,6 +154,12 @@ Current limitation:
 
 ## Toolbar Actions
 
+- `Refresh` in the Devices and Processes headers
+  Reloads that list. Process refresh is available when a device is selected.
+
+- `Refresh Logs`
+  Reconnects logcat and reloads the device's buffered logs, replacing the local output. It keeps the current filters and does not run `logcat -c`.
+
 - `Clear Logs`
   Clears the visible log list and runs `logcat -c` on the selected device.
 
@@ -164,15 +167,15 @@ Current limitation:
   Runs `adb kill-server` then `adb start-server`, then reconnects.
 
 - `Scroll to End`
-  Jumps to the latest log row and re-enables auto-scroll.
+  Jumps to the latest log line and re-enables auto-scroll.
 
 ## Implementation Notes
 
 - UI: Compose Multiplatform Desktop
 - Look and feel: Jewel-inspired dark desktop UI
 - ADB transport: `com.android.tools.adblib`
-- Log rendering: lazy list with row trimming to cap memory usage
-- Current in-memory log cap: `50,000` rows
+- Log rendering: a read-only Swing styled text document embedded in Compose, with incremental appends and head trimming to cap memory usage
+- Current in-memory log cap: `50,000` entries
 
 ## Project Structure
 
