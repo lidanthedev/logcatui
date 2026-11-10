@@ -67,7 +67,7 @@ private fun LogHeader(
                     buildString {
                         append(if (isStreaming) "Streaming" else "Idle")
                         append(" • ")
-                        append("$count rows")
+                        append("$count entries")
                         selectedProcess?.let {
                             append(" • PID ")
                             append(it)

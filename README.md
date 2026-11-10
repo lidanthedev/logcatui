@@ -167,7 +167,7 @@ Current limitation:
   Runs `adb kill-server` then `adb start-server`, then reconnects.
 
 - `Scroll to End`
-  Jumps to the latest log row and re-enables auto-scroll.
+  Jumps to the latest log line and re-enables auto-scroll.
 
 ## Implementation Notes
 
@@ -175,7 +175,7 @@ Current limitation:
 - Look and feel: Jewel-inspired dark desktop UI
 - ADB transport: `com.android.tools.adblib`
 - Log rendering: a read-only Swing styled text document embedded in Compose, with incremental appends and head trimming to cap memory usage
-- Current in-memory log cap: `50,000` rows
+- Current in-memory log cap: `50,000` entries
 
 ## Project Structure
 

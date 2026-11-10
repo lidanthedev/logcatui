@@ -69,6 +69,14 @@ class LogTextViewTest {
     }
 
     @Test
+    fun `changing a filter with the same endpoints replaces the middle entries`() = SwingUtilities.invokeAndWait {
+        val view = LogTextView {}
+        view.updateLogs(listOf(entry(1), entry(2), entry(4)), false)
+        view.updateLogs(listOf(entry(1), entry(3), entry(4)), false)
+        assertEquals("line 1\nline 3\nline 4\n", view.output.text)
+    }
+
+    @Test
     fun `same entries keep the existing document and selection`() = SwingUtilities.invokeAndWait {
         val view = LogTextView {}
         val logs = listOf(entry(1), entry(2))
