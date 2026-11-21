@@ -47,6 +47,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.awt.awtEventOrNull
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
@@ -79,6 +80,24 @@ internal fun firstLineIndex(lines: List<LogLine>): Map<Long, Int> =
     HashMap<Long, Int>(lines.size).also { map -> lines.forEachIndexed { i, line -> map.putIfAbsent(line.entryId, i) } }
 
 internal fun SelectionEnd.resolve(firstLineOf: Map<Long, Int>): TextPos? = firstLineOf[entryId]?.let { TextPos(it + part, col) }
+
+/** Editor double-click range around [index]: a run of word characters, a run of whitespace, or one symbol. */
+internal fun wordRange(text: String, index: Int): IntRange {
+    if (text.isEmpty()) return IntRange.EMPTY
+    fun kind(c: Char) = when {
+        c.isLetterOrDigit() || c == '_' -> 0
+        c.isWhitespace() -> 1
+        else -> 2
+    }
+    val i = index.coerceIn(0, text.lastIndex)
+    val k = kind(text[i])
+    if (k == 2) return i..i
+    var start = i
+    while (start > 0 && kind(text[start - 1]) == k) start--
+    var end = i
+    while (end < text.lastIndex && kind(text[end + 1]) == k) end++
+    return start..end
+}
 
 internal fun selectedText(lines: List<LogLine>, start: TextPos, end: TextPos): String =
     (start.line..end.line).joinToString("\n") { i ->
@@ -221,15 +240,35 @@ internal fun LogTextView(
                             if (!currentEvent.buttons.isPrimaryPressed) return@awaitEachGesture
                             focusRequester.requestFocus()
                             val start = posAt(down.position) ?: return@awaitEachGesture
-                            if (!currentEvent.keyboardModifiers.isShiftPressed || anchor == null) anchor = start.toEnd()
-                            caret = start.toEnd()
+                            val text = currentLines[start.line].text
+                            // AWT click count follows the OS double-click interval.
+                            val clicks = currentEvent.awtEventOrNull?.clickCount ?: 1
+                            when {
+                                clicks >= 3 -> {
+                                    anchor = TextPos(start.line, 0).toEnd()
+                                    caret = TextPos(start.line, text.length).toEnd()
+                                }
+                                clicks == 2 -> {
+                                    // Hit-test the character under the pointer, not the nearest boundary.
+                                    val word = wordRange(text, ((down.position.x - padXPx) / charWidth).toInt())
+                                    if (!word.isEmpty()) {
+                                        anchor = TextPos(start.line, word.first).toEnd()
+                                        caret = TextPos(start.line, word.last + 1).toEnd()
+                                    }
+                                }
+                                else -> {
+                                    if (!currentEvent.keyboardModifiers.isShiftPressed || anchor == null) anchor = start.toEnd()
+                                    caret = start.toEnd()
+                                }
+                            }
                             while (true) {
                                 val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
                                 if (!change.pressed) break
                                 val y = change.position.y
                                 // shortcut: edge auto-scroll only advances while the mouse moves; add a ticker if users want hold-to-scroll.
                                 if (y < 0) listState.dispatchRawDelta(y) else if (y > size.height) listState.dispatchRawDelta(y - size.height)
-                                posAt(change.position)?.let { caret = it.toEnd() }
+                                // shortcut: dragging after a double/triple click keeps the word/line instead of extending by words/lines.
+                                if (clicks == 1) posAt(change.position)?.let { caret = it.toEnd() }
                             }
                         }
                     },

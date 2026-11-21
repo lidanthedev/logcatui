@@ -37,7 +37,7 @@ It is meant to feel close to the modern Android Studio logcat experience while s
   Main log search, filter history, regex toggle, auto-scroll toggle, log level selector, device selector, clear logs, and restart ADB.
 
 - Log output:
-  Shows full log lines as monospaced text colored by severity. Drag across lines to select and copy multiple logs. Lines do not wrap; scroll sideways (Shift+wheel) for long messages. Change the text size with `A−`/`A+` in the log header, `Ctrl`+wheel, or `Ctrl+=` / `Ctrl+-` (`Ctrl+0` resets). Use `Refresh Logs` to reload the device's buffered logs without clearing them on the device.
+  Shows full log lines as monospaced text colored by severity. Drag across lines to select and copy multiple logs. Double-click selects a word, triple-click selects a line. Lines do not wrap; scroll sideways (Shift+wheel) for long messages. Change the text size with `A−`/`A+` in the log header, `Ctrl`+wheel, or `Ctrl+=` / `Ctrl+-` (`Ctrl+0` resets). Use `Refresh Logs` to reload the device's buffered logs without clearing them on the device.
 
 ## Requirements
 

@@ -26,6 +26,17 @@ class LogTextViewTest {
     }
 
     @Test
+    fun `double click range picks word whitespace or single symbol`() {
+        val text = "I ActivityManager: Start proc_42  {cmp=x}"
+        assertEquals("ActivityManager", text.substring(wordRange(text, 5)))
+        assertEquals("proc_42", text.substring(wordRange(text, 30)))
+        assertEquals(":", text.substring(wordRange(text, 17)))
+        assertEquals("  ", text.substring(wordRange(text, 32)))
+        assertEquals("}", text.substring(wordRange(text, 999)))
+        assertEquals(IntRange.EMPTY, wordRange("", 3))
+    }
+
+    @Test
     fun `selection follows its entry when older entries are trimmed`() {
         val end = SelectionEnd(entryId = 3, part = 1, col = 2)
         val before = firstLineIndex(logLines(listOf(entry(1), entry(2), entry(3, "a\nbc"))))
