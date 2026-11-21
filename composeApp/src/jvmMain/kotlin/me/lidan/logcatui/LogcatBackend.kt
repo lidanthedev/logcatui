@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 
 private const val DEVICE_TRACK_RETRY_MS = 1_500L
 private const val MAX_LOG_ENTRIES = 50_000
+internal const val DEFAULT_LOG_FONT_SIZE = 15
 private const val PROCESS_MONITOR_INTERVAL_MS = 1_500L
 private val LOGCAT_PATTERN =
     Regex(
@@ -361,6 +362,8 @@ class LogcatController(
         private set
     var regexEnabled by mutableStateOf(false)
     var autoScrollToBottom by mutableStateOf(true)
+    var logFontSize by mutableStateOf(DEFAULT_LOG_FONT_SIZE)
+        private set
     var statusMessage by mutableStateOf("Connecting to ADB server...")
         private set
     var isStreaming by mutableStateOf(false)
@@ -449,6 +452,10 @@ class LogcatController(
 
     fun refreshDevices() {
         observeDevices()
+    }
+
+    fun updateLogFontSize(size: Int) {
+        logFontSize = size.coerceIn(9, 32)
     }
 
     fun refreshLogs() {

@@ -12,7 +12,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.jetbrains.jewel.ui.component.OutlinedButton
@@ -32,13 +31,17 @@ internal fun MainPanel(
             onRefresh = controller::refreshLogs,
             refreshEnabled = controller.selectedDeviceSerial != null,
             onScrollToEnd = { controller.autoScrollToBottom = true },
+            fontSize = controller.logFontSize,
+            onFontSizeChange = controller::updateLogFontSize,
         )
         HorizontalDivider(color = AppBorder)
-        SwingPanel(
-            background = AppBackground,
+        LogTextView(
+            logs = logs,
+            autoScroll = controller.autoScrollToBottom,
+            onAutoScrollChange = { controller.autoScrollToBottom = it },
+            fontSize = controller.logFontSize,
+            onFontSizeChange = controller::updateLogFontSize,
             modifier = Modifier.weight(1f).fillMaxSize(),
-            factory = { LogTextView { controller.autoScrollToBottom = it } },
-            update = { it.updateLogs(logs, controller.autoScrollToBottom) },
         )
     }
 }
@@ -51,6 +54,8 @@ private fun LogHeader(
     onRefresh: () -> Unit,
     refreshEnabled: Boolean,
     onScrollToEnd: () -> Unit,
+    fontSize: Int,
+    onFontSizeChange: (Int) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
@@ -76,7 +81,11 @@ private fun LogHeader(
                 color = SoftText,
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Also Ctrl+wheel, Ctrl+= / Ctrl+- / Ctrl+0 inside the log output.
+            OutlinedButton(onClick = { onFontSizeChange(fontSize - 1) }) { Text("A−") }
+            Text(text = "$fontSize", color = SoftText)
+            OutlinedButton(onClick = { onFontSizeChange(fontSize + 1) }) { Text("A+") }
             OutlinedButton(onClick = onRefresh, enabled = refreshEnabled) {
                 ToolbarButtonContent(AppIconSymbol.Refresh, "Refresh Logs")
             }
