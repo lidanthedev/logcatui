@@ -23,7 +23,7 @@ It is meant to feel close to the modern Android Studio logcat experience while s
   - `----- Process stopped: pid: 213 ------`
   - `----- Process started: pid: 1231 ------`
 - Keeps a history of previously used log filters
-- Supports auto-scroll, manual scroll-to-end, clearing logs, and restarting ADB
+- Supports pausing and resuming the stream, auto-scroll, manual scroll-to-end, clearing logs, and restarting ADB
 
 ## UI Overview
 
@@ -34,7 +34,7 @@ It is meant to feel close to the modern Android Studio logcat experience while s
   Pick a process or `All processes`, or refresh running processes. If a selected process restarts with a new PID, the app follows it automatically.
 
 - Top toolbar:
-  Main log search, filter history, regex toggle, auto-scroll toggle, log level selector, device selector, clear logs, and restart ADB.
+  Main log search, filter history, regex toggle, auto-scroll toggle, log level selector, device selector, clear logs, restart ADB, and pause/resume.
 
 - Log output:
   Shows full log lines as monospaced text colored by severity. Drag across lines to select and copy multiple logs. Double-click selects a word, triple-click selects a line. Lines do not wrap; scroll sideways (Shift+wheel) for long messages. Change the text size with `A−`/`A+` in the log header, `Ctrl`+wheel, or `Ctrl+=` / `Ctrl+-` (`Ctrl+0` resets). Use `Refresh Logs` to reload the device's buffered logs without clearing them on the device.
@@ -166,6 +166,9 @@ Current limitation:
 - `Restart ADB`
   Runs `adb kill-server` then `adb start-server`, then reconnects.
 
+- `Pause` / `Resume`
+  Pauses the visible output while logcat keeps streaming in the background. New logs are held and appended when you resume.
+
 - `Scroll to End`
   Jumps to the latest log line and re-enables auto-scroll.
 
@@ -179,14 +182,16 @@ Current limitation:
 
 ## Project Structure
 
-- [composeApp](/home/lidan/IdeaProjects/logcatui/composeApp)
-  Desktop application module
+All sources live in `composeApp/src/jvmMain/kotlin/me/lidan/logcatui/`:
 
-- [composeApp/src/jvmMain/kotlin/me/lidan/logcatui/App.kt](/home/lidan/IdeaProjects/logcatui/composeApp/src/jvmMain/kotlin/me/lidan/logcatui/App.kt)
-  Desktop UI and filter parsing
+- `main.kt`, `App.kt`: window entry point and root composable
+- `AppViewer.kt`, `AppSidebar.kt`, `AppMainPanel.kt`, `AppComponents.kt`: layout, sidebars, toolbar, and shared widgets
+- `LogTextView.kt`: virtualized, selectable, severity-colored log view
+- `AppSearch.kt`, `AppFilters.kt`: search query parsing and list filtering
+- `AppTheme.kt`, `AppIcons.kt`: colors and icons
+- `LogcatBackend.kt`: ADB integration, streaming, process tracking, and state management
 
-- [composeApp/src/jvmMain/kotlin/me/lidan/logcatui/LogcatBackend.kt](/home/lidan/IdeaProjects/logcatui/composeApp/src/jvmMain/kotlin/me/lidan/logcatui/LogcatBackend.kt)
-  ADB integration, streaming, process tracking, and state management
+Tests live in `composeApp/src/jvmTest/kotlin/me/lidan/logcatui/`.
 
 ## Development
 
