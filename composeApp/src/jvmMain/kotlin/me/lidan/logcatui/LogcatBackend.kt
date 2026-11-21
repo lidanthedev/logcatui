@@ -546,7 +546,8 @@ class LogcatController(
                 } catch (error: Exception) {
                     statusMessage = error.message ?: "Logcat stream stopped unexpectedly."
                 } finally {
-                    isStreaming = false
+                    // A canceled stream can finish after its replacement started; only the current one reports Idle.
+                    if (generation == streamGeneration) isStreaming = false
                 }
             }
     }

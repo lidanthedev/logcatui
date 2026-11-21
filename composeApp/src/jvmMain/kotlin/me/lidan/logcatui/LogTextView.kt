@@ -79,7 +79,10 @@ internal fun logLines(logs: List<LogEntry>): List<LogLine> =
 internal fun firstLineIndex(lines: List<LogLine>): Map<Long, Int> =
     HashMap<Long, Int>(lines.size).also { map -> lines.forEachIndexed { i, line -> map.putIfAbsent(line.entryId, i) } }
 
-internal fun SelectionEnd.resolve(firstLineOf: Map<Long, Int>): TextPos? = firstLineOf[entryId]?.let { TextPos(it + part, col) }
+internal fun SelectionEnd.resolve(lines: List<LogLine>, firstLineOf: Map<Long, Int>): TextPos? =
+    firstLineOf[entryId]?.let { TextPos(it + part, col) }
+        // Trimmed off the front of the buffer: clamp to the start so the rest of the selection survives.
+        ?: TextPos(0, 0).takeIf { lines.isNotEmpty() && entryId < lines[0].entryId }
 
 /** Editor double-click range around [index]: a run of word characters, a run of whitespace, or one symbol. */
 internal fun wordRange(text: String, index: Int): IntRange {
@@ -124,8 +127,8 @@ internal fun LogTextView(
     val firstLineOf = remember(lines) { firstLineIndex(lines) }
     var anchor by remember { mutableStateOf<SelectionEnd?>(null) }
     var caret by remember { mutableStateOf<SelectionEnd?>(null) }
-    val a = anchor?.resolve(firstLineOf)
-    val c = caret?.resolve(firstLineOf)
+    val a = anchor?.resolve(lines, firstLineOf)
+    val c = caret?.resolve(lines, firstLineOf)
     val selection = if (a != null && c != null && a != c) minOf(a, c) to maxOf(a, c) else null
 
     val style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize.sp)
@@ -143,6 +146,7 @@ internal fun LogTextView(
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
     val currentLines by rememberUpdatedState(lines)
+    val currentFirstLineOf by rememberUpdatedState(firstLineOf)
     val currentAutoScroll by rememberUpdatedState(autoScroll)
     val currentSelection by rememberUpdatedState(selection)
     val currentOnAutoScrollChange by rememberUpdatedState(onAutoScrollChange)
@@ -164,9 +168,6 @@ internal fun LogTextView(
         return TextPos(line, col)
     }
 
-    LaunchedEffect(lines, autoScroll) {
-        if (autoScroll && lines.isNotEmpty()) listState.scrollToItem(lines.lastIndex)
-    }
     // Scrolling back to the bottom with nothing selected resumes following, like the old Swing view.
     LaunchedEffect(listState) {
         snapshotFlow { !listState.canScrollForward && !listState.isScrollInProgress && currentSelection == null }
@@ -228,13 +229,18 @@ internal fun LogTextView(
     ) {
         val contentWidth = with(density) { (lines.maxOfOrNull { it.text.length } ?: 0).times(charWidth).plus(2 * padXPx).toDp() }
         val viewportWidth = maxWidth
+        // Zooming (rowHeight) or resizing (maxHeight) moves the bottom, so re-pin while following.
+        LaunchedEffect(lines, autoScroll, rowHeight, maxHeight) {
+            if (autoScroll && lines.isNotEmpty()) listState.requestScrollToItem(lines.lastIndex)
+        }
         Box(Modifier.fillMaxSize().horizontalScroll(hScroll)) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(maxOf(viewportWidth, contentWidth))
-                    .pointerInput(Unit) {
+                    // Keyed on glyph width so hit-testing uses the current font size after zooming.
+                    .pointerInput(charWidth, padXPx) {
                         awaitEachGesture {
                             val down = awaitFirstDown()
                             if (!currentEvent.buttons.isPrimaryPressed) return@awaitEachGesture
@@ -257,7 +263,8 @@ internal fun LogTextView(
                                     }
                                 }
                                 else -> {
-                                    if (!currentEvent.keyboardModifiers.isShiftPressed || anchor == null) anchor = start.toEnd()
+                                    // Shift extends only from an anchor still in the buffer, not one left over from cleared logs.
+                                    if (!currentEvent.keyboardModifiers.isShiftPressed || anchor?.entryId !in currentFirstLineOf) anchor = start.toEnd()
                                     caret = start.toEnd()
                                 }
                             }

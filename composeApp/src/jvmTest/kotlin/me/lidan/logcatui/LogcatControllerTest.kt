@@ -6,11 +6,15 @@ import javax.swing.SwingUtilities
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 class LogcatControllerTest {
@@ -44,6 +48,23 @@ class LogcatControllerTest {
             delay(120) // Allow every paused append to wake before checking for late duplicates.
 
             assertEquals(listOf(entry), onEdtValue { controller.logs.toList() })
+        } finally {
+            onEdt { controller.close() }
+        }
+    }
+
+    @Test
+    fun `refresh logs keeps streaming status after the old stream finishes`() = runBlocking {
+        val service = FakeLogcatService(cancelDelayMs = 50)
+        val controller = LogcatController(service)
+        try {
+            onEdt { controller.selectDevice("test-device") }
+            service.awaitStream(1)
+            onEdt { controller.refreshLogs() }
+            service.awaitStream(2)
+            delay(120) // Let the canceled stream's cleanup run.
+
+            assertEquals(true, onEdtValue { controller.isStreaming })
         } finally {
             onEdt { controller.close() }
         }
@@ -102,7 +123,8 @@ class LogcatControllerTest {
         return result!!.getOrThrow()
     }
 
-    private class FakeLogcatService : LogcatService {
+    // cancelDelayMs mimics adblib streams that finish canceling after a new stream has started.
+    private class FakeLogcatService(private val cancelDelayMs: Long = 0) : LogcatService {
         private val streams = CopyOnWriteArrayList<MutableSharedFlow<LogEntry>>()
 
         override fun trackDevices(): Flow<List<DeviceDescriptor>> = emptyFlow()
@@ -113,7 +135,16 @@ class LogcatControllerTest {
             serial: String,
             minimumLevel: LogLevel,
             pid: Int?,
-        ): Flow<LogEntry> = MutableSharedFlow<LogEntry>().also { streams.add(it) }
+        ): Flow<LogEntry> {
+            val stream = MutableSharedFlow<LogEntry>().also { streams.add(it) }
+            return flow {
+                try {
+                    emitAll(stream)
+                } finally {
+                    withContext(NonCancellable) { delay(cancelDelayMs) }
+                }
+            }
+        }
 
         override suspend fun restartAdb() = Unit
 

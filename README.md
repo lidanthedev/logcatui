@@ -174,7 +174,7 @@ Current limitation:
 - UI: Compose Multiplatform Desktop
 - Look and feel: Jewel-inspired dark desktop UI
 - ADB transport: `com.android.tools.adblib`
-- Log rendering: a read-only Swing styled text document embedded in Compose, with incremental appends and head trimming to cap memory usage
+- Log rendering: a virtualized Compose `LazyColumn` of monospace lines with its own cross-line selection; old entries are trimmed from the head to cap memory usage
 - Current in-memory log cap: `50,000` entries
 
 ## Project Structure
