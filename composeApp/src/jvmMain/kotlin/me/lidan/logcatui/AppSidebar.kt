@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,15 +14,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.component.OutlinedButton
 
 @Composable
 internal fun Sidebar(
     title: String,
+    onRefresh: () -> Unit,
+    refreshEnabled: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -31,12 +36,20 @@ internal fun Sidebar(
                 .border(width = 1.dp, color = AppBorder)
                 .padding(vertical = 10.dp),
     ) {
-        Text(
-            text = title,
-            color = SoftText,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                color = SoftText,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedButton(onClick = onRefresh, enabled = refreshEnabled) {
+                ToolbarButtonContent(AppIconSymbol.Refresh, "Refresh")
+            }
+        }
         HorizontalDivider(color = AppBorder, modifier = Modifier.padding(bottom = 8.dp))
         content()
     }
